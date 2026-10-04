@@ -9,9 +9,7 @@
         import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.3.0/+esm";
         try {
             const discordSdk = new DiscordSDK("1539900184585179136");
-            discordSdk.ready().then(() => {
-                console.log("語音活動加載完成！");
-            }).catch(e => console.log("SDK ready error:", e));
+            discordSdk.ready().catch(e => console.log("SDK error:", e));
         } catch (err) {
             console.log("SDK init error:", err);
         }
@@ -38,8 +36,56 @@
             text-align: center;
             width: 85%;
             max-width: 480px;
+            position: relative;
         }
-        h1 { margin-bottom: 20px; font-size: 24px; color: #f1c40f; }
+        /* 管理員鎖定狀態列 */
+        .auth-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #18191c;
+            padding: 6px 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        .auth-status { color: #f04747; font-weight: bold; }
+        .auth-status.unlocked { color: #43b581; }
+        .auth-btn {
+            background: #4e5058;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .auth-btn:hover { background: #6d6f78; }
+
+        /* 密碼輸入彈出區 */
+        .pin-box {
+            display: none;
+            background: #313338;
+            border: 1px solid #4e5058;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+        }
+        .pin-box.active { display: flex; }
+        .pin-box input {
+            width: 100px;
+            padding: 6px;
+            border-radius: 6px;
+            border: 1px solid #4e5058;
+            background: #1e1f22;
+            color: #fff;
+            text-align: center;
+        }
+
+        h1 { margin-bottom: 15px; font-size: 22px; color: #f1c40f; }
         .input-group {
             display: flex;
             justify-content: space-around;
@@ -57,8 +103,10 @@
             font-size: 16px;
             text-align: center;
         }
+        input:disabled { background: #232428; color: #72767d; border-color: #2b2d31; cursor: not-allowed; }
         input:focus { outline: 2px solid #5865f2; }
-        button {
+
+        button#rollBtn {
             background-color: #5865f2;
             color: white;
             border: none;
@@ -70,9 +118,14 @@
             transition: 0.15s;
             width: 100%;
         }
-        button:hover { background-color: #4752c4; }
-        button:active { transform: scale(0.98); }
-        button:disabled { background-color: #4e5058; cursor: not-allowed; }
+        button#rollBtn:hover:not(:disabled) { background-color: #4752c4; }
+        button#rollBtn:disabled {
+            background-color: #3b3e45;
+            color: #72767d;
+            cursor: not-allowed;
+            border: 1px dashed #4e5058;
+        }
+
         .result-box {
             margin-top: 20px;
             min-height: 80px;
@@ -100,50 +153,140 @@
 </head>
 <body>
     <div class="container">
-        <h1>🌕 荒野亂鬥 · 中秋通行券抽獎🥮</h1>
+        <!-- 管理員權限狀態列 -->
+        <div class="auth-bar">
+            <span id="authStatusText" class="auth-status">🔒 觀眾模式（僅供觀看）</span>
+            <button id="toggleAuthBtn" class="auth-btn" type="button">🔑 管理員解鎖</button>
+        </div>
+
+        <!-- 密碼輸入區（預設隱藏） -->
+        <div id="pinBox" class="pin-box">
+            <input type="password" id="pinInput" placeholder="輸入管理密碼">
+            <button id="submitPinBtn" class="auth-btn" style="background:#5865f2;" type="button">確定</button>
+            <button id="cancelPinBtn" class="auth-btn" type="button">取消</button>
+        </div>
+
+        <h1>🌕 荒野亂鬥 · 中秋通行券抽獎 🥮</h1>
         
         <div class="input-group">
             <div class="input-item">
                 <label>最小號碼</label>
-                <input type="number" id="minNum" value="1">
+                <input type="number" id="minNum" value="1" disabled>
             </div>
             <div class="input-item">
                 <label>最大號碼</label>
-                <input type="number" id="maxNum" value="50">
+                <input type="number" id="maxNum" value="50" disabled>
             </div>
             <div class="input-item">
                 <label>抽取名額</label>
-                <input type="number" id="count" value="1">
+                <input type="number" id="count" value="1" disabled>
             </div>
         </div>
 
-        <!-- 移除 inline onclick，改用標準 id 綁定 -->
-        <button id="rollBtn" type="button">🎲 立即開抽</button>
+        <!-- 預設鎖定，需解鎖才能點 -->
+        <button id="rollBtn" type="button" disabled>🔒 僅限管理員開抽</button>
 
         <div class="result-box" id="resultBox">
-            <div style="color: #949ba4;">設定數字範圍後點擊開抽</div>
+            <div style="color: #949ba4;">等待管理員設定範圍並開抽</div>
         </div>
     </div>
 
     <script>
+        // ==========================================
+        // 🔑 管理員密碼設定（預設為 8888，你可以改成自己想記的數字）
+        // ==========================================
+        const ADMIN_PASSWORD = "20120519";
+
+        let isAdmin = false;
         let rolling = false;
 
-        function initDraw() {
+        document.addEventListener('DOMContentLoaded', () => {
             const rollBtn = document.getElementById('rollBtn');
-            if (rollBtn) {
-                rollBtn.addEventListener('click', startRoll);
+            const toggleAuthBtn = document.getElementById('toggleAuthBtn');
+            const pinBox = document.getElementById('pinBox');
+            const submitPinBtn = document.getElementById('submitPinBtn');
+            const cancelPinBtn = document.getElementById('cancelPinBtn');
+            const pinInput = document.getElementById('pinInput');
+
+            // 點擊解鎖按鈕
+            toggleAuthBtn.addEventListener('click', () => {
+                if (isAdmin) {
+                    lockControls();
+                } else {
+                    pinBox.classList.add('active');
+                    pinInput.focus();
+                }
+            });
+
+            // 送出密碼
+            submitPinBtn.addEventListener('click', verifyPassword);
+            pinInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') verifyPassword();
+            });
+
+            // 取消解鎖
+            cancelPinBtn.addEventListener('click', () => {
+                pinBox.classList.remove('active');
+                pinInput.value = '';
+            });
+
+            // 綁定抽獎按鈕
+            rollBtn.addEventListener('click', startRoll);
+        });
+
+        function verifyPassword() {
+            const pinInput = document.getElementById('pinInput');
+            const pinBox = document.getElementById('pinBox');
+            const box = document.getElementById('resultBox');
+
+            if (pinInput.value === ADMIN_PASSWORD) {
+                unlockControls();
+                pinBox.classList.remove('active');
+                pinInput.value = '';
+            } else {
+                box.innerHTML = '<div style="color: #ed4245; font-size: 14px;">❌ 密碼錯誤！無法解鎖操作權限。</div>';
+                pinInput.value = '';
             }
         }
 
-        // 確保網頁載入後綁定點擊事件
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initDraw);
-        } else {
-            initDraw();
+        function unlockControls() {
+            isAdmin = true;
+            document.getElementById('minNum').disabled = false;
+            document.getElementById('maxNum').disabled = false;
+            document.getElementById('count').disabled = false;
+
+            const rollBtn = document.getElementById('rollBtn');
+            rollBtn.disabled = false;
+            rollBtn.innerText = "🎲 立即開抽";
+
+            const authStatusText = document.getElementById('authStatusText');
+            authStatusText.innerText = "👑 管理員模式（已解鎖）";
+            authStatusText.className = "auth-status unlocked";
+
+            document.getElementById('toggleAuthBtn').innerText = "🔒 鎖定介面";
+            document.getElementById('resultBox').innerHTML = '<div style="color: #43b581;">已解鎖！設定數字後點擊「立即開抽」</div>';
+        }
+
+        function lockControls() {
+            isAdmin = false;
+            document.getElementById('minNum').disabled = true;
+            document.getElementById('maxNum').disabled = true;
+            document.getElementById('count').disabled = true;
+
+            const rollBtn = document.getElementById('rollBtn');
+            rollBtn.disabled = true;
+            rollBtn.innerText = "🔒 僅限管理員開抽";
+
+            const authStatusText = document.getElementById('authStatusText');
+            authStatusText.innerText = "🔒 觀眾模式（僅供觀看）";
+            authStatusText.className = "auth-status";
+
+            document.getElementById('toggleAuthBtn').innerText = "🔑 管理員解鎖";
+            document.getElementById('resultBox').innerHTML = '<div style="color: #949ba4;">等待管理員設定範圍並開抽</div>';
         }
 
         function startRoll() {
-            if (rolling) return;
+            if (!isAdmin || rolling) return;
 
             const min = parseInt(document.getElementById('minNum').value) || 1;
             const max = parseInt(document.getElementById('maxNum').value) || 100;
@@ -151,13 +294,12 @@
             const box = document.getElementById('resultBox');
             const rollBtn = document.getElementById('rollBtn');
 
-            // 錯誤訊息直接顯示在畫面上（避免 alert 被 Discord 阻擋）
             if (min >= max) {
                 box.innerHTML = '<div style="color: #ed4245; font-weight: bold;">❌ 最小號碼必須小於最大號碼！</div>';
                 return;
             }
             if (count > (max - min + 1) || count < 1) {
-                box.innerHTML = '<div style="color: #ed4245; font-weight: bold;">❌ 抽取名額不可超過號碼範圍總數！</div>';
+                box.innerHTML = '<div style="color: #ed4245; font-weight: bold;">❌ 抽取名額不可超過範圍總數！</div>';
                 return;
             }
 
@@ -165,7 +307,6 @@
             rollBtn.disabled = true;
             let counter = 0;
 
-            // 滾動跳動特效 (約 2 秒)
             const interval = setInterval(() => {
                 box.innerHTML = '';
                 for (let i = 0; i < count; i++) {
@@ -185,7 +326,6 @@
             const rollBtn = document.getElementById('rollBtn');
             box.innerHTML = '';
             
-            // 高效不重複真隨機抽取
             const winners = new Set();
             while (winners.size < count) {
                 const pick = Math.floor(Math.random() * (max - min + 1)) + min;
