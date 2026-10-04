@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>荒野亂鬥中秋亂數抽獎</title>
+    <!-- 引入 Discord 官方語音活動 SDK -->
+    <script type="module">
+        import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.3.0/+esm";
+        // 替換為你在 Discord 開發者後台看到的 Application ID
+        const discordSdk = new DiscordSDK("1539900184585179136");
+        async function init() {
+            await discordSdk.ready();
+            console.log("語音活動加載完成！");
+        }
+        init();
+    </script>
+    <style>
+        body {
+            background-color: #1e1f22;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .container {
+            background: #2b2d31;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 85%;
+            max-width: 480px;
+        }
+        h1 { margin-bottom: 20px; font-size: 24px; color: #f1c40f; }
+        .input-group {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .input-item { display: flex; flex-direction: column; text-align: left; }
+        label { font-size: 13px; margin-bottom: 5px; color: #b5bac1; }
+        input {
+            width: 80px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #383a40;
+            background: #1e1f22;
+            color: #fff;
+            font-size: 16px;
+            text-align: center;
+        }
+        button {
+            background-color: #5865f2;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: 0.2s;
+            width: 100%;
+        }
+        button:hover { background-color: #4752c4; }
+        .result-box {
+            margin-top: 25px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .number-badge {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            color: white;
+            font-size: 30px;
+            font-weight: bold;
+            padding: 8px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(230, 126, 34, 0.4);
+            animation: popIn 0.3s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌕 荒野亂鬥 · 語音抽獎機 🥮</h1>
+        
+        <div class="input-group">
+            <div class="input-item">
+                <label>最小號碼</label>
+                <input type="number" id="minNum" value="1">
+            </div>
+            <div class="input-item">
+                <label>最大號碼</label>
+                <input type="number" id="maxNum" value="50">
+            </div>
+            <div class="input-item">
+                <label>抽取名額</label>
+                <input type="number" id="count" value="1">
+            </div>
+        </div>
+
+        <button onclick="startRoll()">🎲 立即開抽</button>
+
+        <div class="result-box" id="resultBox">
+            <div style="color: #949ba4;">設定數字範圍後點擊開抽</div>
+        </div>
+    </div>
+
+    <script>
+        let rolling = false;
+
+        function startRoll() {
+            if (rolling) return;
+            const min = parseInt(document.getElementById('minNum').value);
+            const max = parseInt(document.getElementById('maxNum').value);
+            const count = parseInt(document.getElementById('count').value);
+            const box = document.getElementById('resultBox');
+
+            if (min >= max) {
+                alert("最小號碼必須小於最大號碼！");
+                return;
+            }
+            if (count > (max - min + 1) || count < 1) {
+                alert("抽取名額不可超過號碼範圍總數！");
+                return;
+            }
+
+            rolling = true;
+            let counter = 0;
+
+            const interval = setInterval(() => {
+                box.innerHTML = '';
+                for (let i = 0; i < count; i++) {
+                    const temp = Math.floor(Math.random() * (max - min + 1)) + min;
+                    box.innerHTML += `<div class="number-badge" style="background: #4e5058;">${temp}</div>`;
+                }
+                counter++;
+                if (counter > 15) {
+                    clearInterval(interval);
+                    finalizeResult(min, max, count);
+                }
+            }, 120);
+        }
+
+        function finalizeResult(min, max, count) {
+            const box = document.getElementById('resultBox');
+            box.innerHTML = '';
+            
+            let pool = [];
+            for (let i = min; i <= max; i++) pool.push(i);
+            pool.sort(() => Math.random() - 0.5);
+            const winners = pool.slice(0, count).sort((a, b) => a - b);
+
+            winners.forEach(num => {
+                box.innerHTML += `<div class="number-badge">${num}</div>`;
+            });
+            rolling = false;
+        }
+    </script>
+</body>
+</html>
