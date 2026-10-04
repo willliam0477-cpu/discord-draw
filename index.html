@@ -7,13 +7,14 @@
     <!-- 引入 Discord 官方語音活動 SDK -->
     <script type="module">
         import { DiscordSDK } from "https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.3.0/+esm";
-        // 替換為你在 Discord 開發者後台看到的 Application ID
-        const discordSdk = new DiscordSDK("1539900184585179136");
-        async function init() {
-            await discordSdk.ready();
-            console.log("語音活動加載完成！");
+        try {
+            const discordSdk = new DiscordSDK("1539900184585179136");
+            discordSdk.ready().then(() => {
+                console.log("語音活動加載完成！");
+            }).catch(e => console.log("SDK ready error:", e));
+        } catch (err) {
+            console.log("SDK init error:", err);
         }
-        init();
     </script>
     <style>
         body {
@@ -27,10 +28,11 @@
             height: 100vh;
             margin: 0;
             overflow: hidden;
+            user-select: none;
         }
         .container {
             background: #2b2d31;
-            padding: 30px;
+            padding: 25px 30px;
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
             text-align: center;
@@ -55,6 +57,7 @@
             font-size: 16px;
             text-align: center;
         }
+        input:focus { outline: 2px solid #5865f2; }
         button {
             background-color: #5865f2;
             color: white;
@@ -64,12 +67,14 @@
             font-weight: bold;
             border-radius: 10px;
             cursor: pointer;
-            transition: 0.2s;
+            transition: 0.15s;
             width: 100%;
         }
         button:hover { background-color: #4752c4; }
+        button:active { transform: scale(0.98); }
+        button:disabled { background-color: #4e5058; cursor: not-allowed; }
         .result-box {
-            margin-top: 25px;
+            margin-top: 20px;
             min-height: 80px;
             display: flex;
             align-items: center;
@@ -80,12 +85,12 @@
         .number-badge {
             background: linear-gradient(135deg, #e67e22, #f39c12);
             color: white;
-            font-size: 30px;
+            font-size: 28px;
             font-weight: bold;
-            padding: 8px 20px;
+            padding: 8px 18px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(230, 126, 34, 0.4);
-            animation: popIn 0.3s ease-out;
+            animation: popIn 0.25s ease-out;
         }
         @keyframes popIn {
             0% { transform: scale(0.5); opacity: 0; }
@@ -95,7 +100,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🌕 荒野亂鬥 · 語音抽獎機 🥮</h1>
+        <h1>🌕 荒野亂鬥 · 中秋通行券抽獎🥮</h1>
         
         <div class="input-group">
             <div class="input-item">
@@ -112,7 +117,8 @@
             </div>
         </div>
 
-        <button onclick="startRoll()">🎲 立即開抽</button>
+        <!-- 移除 inline onclick，改用標準 id 綁定 -->
+        <button id="rollBtn" type="button">🎲 立即開抽</button>
 
         <div class="result-box" id="resultBox">
             <div style="color: #949ba4;">設定數字範圍後點擊開抽</div>
@@ -122,25 +128,44 @@
     <script>
         let rolling = false;
 
+        function initDraw() {
+            const rollBtn = document.getElementById('rollBtn');
+            if (rollBtn) {
+                rollBtn.addEventListener('click', startRoll);
+            }
+        }
+
+        // 確保網頁載入後綁定點擊事件
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDraw);
+        } else {
+            initDraw();
+        }
+
         function startRoll() {
             if (rolling) return;
-            const min = parseInt(document.getElementById('minNum').value);
-            const max = parseInt(document.getElementById('maxNum').value);
-            const count = parseInt(document.getElementById('count').value);
-            const box = document.getElementById('resultBox');
 
+            const min = parseInt(document.getElementById('minNum').value) || 1;
+            const max = parseInt(document.getElementById('maxNum').value) || 100;
+            const count = parseInt(document.getElementById('count').value) || 1;
+            const box = document.getElementById('resultBox');
+            const rollBtn = document.getElementById('rollBtn');
+
+            // 錯誤訊息直接顯示在畫面上（避免 alert 被 Discord 阻擋）
             if (min >= max) {
-                alert("最小號碼必須小於最大號碼！");
+                box.innerHTML = '<div style="color: #ed4245; font-weight: bold;">❌ 最小號碼必須小於最大號碼！</div>';
                 return;
             }
             if (count > (max - min + 1) || count < 1) {
-                alert("抽取名額不可超過號碼範圍總數！");
+                box.innerHTML = '<div style="color: #ed4245; font-weight: bold;">❌ 抽取名額不可超過號碼範圍總數！</div>';
                 return;
             }
 
             rolling = true;
+            rollBtn.disabled = true;
             let counter = 0;
 
+            // 滾動跳動特效 (約 2 秒)
             const interval = setInterval(() => {
                 box.innerHTML = '';
                 for (let i = 0; i < count; i++) {
@@ -152,22 +177,28 @@
                     clearInterval(interval);
                     finalizeResult(min, max, count);
                 }
-            }, 120);
+            }, 100);
         }
 
         function finalizeResult(min, max, count) {
             const box = document.getElementById('resultBox');
+            const rollBtn = document.getElementById('rollBtn');
             box.innerHTML = '';
             
-            let pool = [];
-            for (let i = min; i <= max; i++) pool.push(i);
-            pool.sort(() => Math.random() - 0.5);
-            const winners = pool.slice(0, count).sort((a, b) => a - b);
+            // 高效不重複真隨機抽取
+            const winners = new Set();
+            while (winners.size < count) {
+                const pick = Math.floor(Math.random() * (max - min + 1)) + min;
+                winners.add(pick);
+            }
 
-            winners.forEach(num => {
+            const sortedWinners = Array.from(winners).sort((a, b) => a - b);
+            sortedWinners.forEach(num => {
                 box.innerHTML += `<div class="number-badge">${num}</div>`;
             });
+
             rolling = false;
+            rollBtn.disabled = false;
         }
     </script>
 </body>
